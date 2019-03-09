@@ -3,7 +3,7 @@ import crypto
 import pickle
 import datetime
 
-filename = 'client-key.pem'
+rsaKeyFilename = 'client-key.pem'
 publicKeyServer = 'server-public.der'
 publicKeyPG = 'pg-public.der'
 
@@ -18,10 +18,9 @@ if __name__ == "__main__":
         data = s.recv(1024)
         produse = pickle.loads(data)
         print(produse)
-        produs = input('Alege produsul')
-        #produs = 'item2'
+        produs = input('Alege produsul: ')
 
-        key = crypto.Rsa().importKey(filename)
+        key = crypto.Rsa().importKey(rsaKeyFilename)
         pubKM = crypto.Rsa().loadPublicKey(publicKeyServer)
         pubKPG = crypto.Rsa().loadPublicKey(publicKeyPG)
         AESkey = b'1234567890123456'
@@ -66,7 +65,7 @@ if __name__ == "__main__":
               'M': b'ceva'}
         piBytes = pickle.dumps(pi)
         pm = {'pi': piBytes,
-              'signedPi': crypto.Sign().sign(piBytes, filename)}
+              'signedPi': crypto.Sign().sign(piBytes, rsaKeyFilename)}
         encryptedPm = crypto.Aes().encrypt(pickle.dumps(pm), AESkeyPG)
         encryptedPGkey = crypto.Rsa().encrypt(AESkeyPG, pubKPG)
         print('Am criptat PM cu PG AESkey = ', AESkeyPG,'     PG RSA PubKPG = ', pubKPG.exportKey())
@@ -77,13 +76,12 @@ if __name__ == "__main__":
         })
         po = {
             'poContent': poContent,
-            'signedPo': crypto.Sign().sign(poContent, filename)
+            'signedPo': crypto.Sign().sign(poContent, rsaKeyFilename)
         }
 
         encryptedMessage = crypto.Aes().encrypt(pickle.dumps({'encryptedPm': encryptedPm,
                                                               'encryptedPGkey': encryptedPGkey,
                                                               'po': po}), AESkey)
-        # print(encryptedMessage)
         encryptedKey = crypto.Rsa().encrypt(AESkey, pubKM)
         print('Am criptat intregul mesaj cu MERCHANT AESkey = ', AESkey, '     MERCHANT RSA PubKM = ', pubKM.exportKey())
         s.sendall(pickle.dumps({'encryptedMessage': encryptedMessage, 'encryptedKey': encryptedKey}))
@@ -92,7 +90,7 @@ if __name__ == "__main__":
         # Step 6
         print('Step 6')
         data = pickle.loads(s.recv(1000))
-        # trec peste key
+        AESkey = crypto.Rsa().decrypt(data['encryptedKey'], key)
         pgResponseEncrypted = {
             'cipertext': data['pgResponse'][0],
             'nonce': data['pgResponse'][1],

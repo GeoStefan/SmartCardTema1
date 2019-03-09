@@ -46,14 +46,6 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             }
             order = pickle.loads(crypto.Aes().decrypt(encryptedMessage, AESkeyM))
             print('Order: ', order)
-            # verify merchant signature
-            print('Verify merchant signature')
-            if crypto.Sign().verifySignature(order['mm'], order['signedMm'], publicKeyServer):
-                print('Correct signature')
-            else:
-                print('Invalid signature')
-                conn.close()
-            mm = pickle.loads(order['mm'])
             # decrypt client message
             print('Decrypt client message')
             AESkeyC = crypto.Rsa().decrypt(order['encryptedPmKey'], key)
@@ -66,22 +58,23 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             clientOrder = pickle.loads(crypto.Aes().decrypt(clientMessage, AESkeyC))
             # verify client signature
             print('Verify client signature')
-            if crypto.Sign().verifySignature(clientOrder['pi'], clientOrder['signedPi'], publicKeyClient):
-                print('Correct signature')
-            else:
-                print('Invalid signature')
+            if crypto.Sign().verifySignature(clientOrder['pi'], clientOrder['signedPi'], publicKeyClient) == False:
+                print("Invalid signature, Closing the connection...")
                 conn.close()
             pi = pickle.loads(clientOrder['pi'])
-            print('PI: ', pi)
-            # verify PubKC in client message is = PucKC in merchant message
-            if pi['pubKC'] != mm['pubKC']:
-                print('Invalid pubKC')
-            # verify client SID = merchant SID
-            if pi['sid'] != mm['sid']:
-                print('Invalid SID')
-            # verify client amount = merchant amount:
-            if pi['amount'] != mm['amount']:
-                print('Invalid amount')
+            # verify merchant signature
+            mm = pickle.dumps({
+                'sid': pi['sid'],
+                'pubKC': pi['pubKC'],
+                'amount': pi['amount']
+            })
+            print('Verify merchant signature')
+            if crypto.Sign().verifySignature(mm, order['signedMm'], publicKeyServer) == False:
+                print("Invalid signature, Closing the connection...")
+                conn.close()
+
+            # step 5
+            print('Step 5')
             # verify client CARD
             clientNonce = pi['nc']
             resp = 'OK'
@@ -95,6 +88,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 else:
                     # modify account balance
                     cardAmount[pi['cardN']] -= pi['amount']
+                    resp = resp + '\tCard Balance: ' + str(cardAmount[pi['cardN']])
 
             signedMessage = crypto.Sign().sign(pickle.dumps(
                 {'resp': resp,

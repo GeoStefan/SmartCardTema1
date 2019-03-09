@@ -12,7 +12,7 @@ produse = {
 }
 
 HOST, PORT = "localhost", 8999
-filename = 'server-key.pem'
+rsaKeyFilename = 'server-key.pem'
 publicKeyClient = 'client-public.der'
 publicKeyPG = 'pg-public.der'
 
@@ -26,7 +26,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # Trimite lista cu produse
             conn.sendall(pickle.dumps(produse))
 
-            key = crypto.Rsa().importKey(filename)
+            key = crypto.Rsa().importKey(rsaKeyFilename)
 
             # setup sub-protocol
             # step 1
@@ -40,9 +40,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # step 2
             print('Step 2')
             SID = uuid.uuid4().bytes
-            signedSID = crypto.Sign().sign(SID, filename)
+            signedSID = crypto.Sign().sign(SID, rsaKeyFilename)
             encryptedMessage = crypto.Aes().encrypt(pickle.dumps({'sid': SID, 'signedSid': signedSID}), AESkey)
             encryptedKey = crypto.Rsa().encrypt(AESkey, pubKC)
+            print('Am criptat mesajul cu CLIENT AESKEY = ', AESkey, '    CLIENT RSA PubKC = ', pubKC.exportKey())
             conn.sendall(pickle.dumps({'cipertext': encryptedMessage}))
             print('Am trimis SID = ', SID, '\n')
 
@@ -50,9 +51,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # step 3
             print('Step 3')
             data = pickle.loads(conn.recv(20000))
-            # trec peste decriptarea keyAES
             AESkey = crypto.Rsa().decrypt(data['encryptedKey'], key)
-            print(AESkey)
             message = {
                 'cipertext': data['encryptedMessage'][0],
                 'nonce': data['encryptedMessage'][1],
@@ -60,9 +59,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             }
             message = pickle.loads(crypto.Aes().decrypt(message, AESkey))
             # verify client signature on PO
-            if crypto.Sign().verifySignature(message['po']['poContent'], message['po']['signedPo'], publicKeyClient):
-                print("Correct signature")
-            else:
+            print('Verify client signature on PO')
+            if crypto.Sign().verifySignature(message['po']['poContent'], message['po']['signedPo'], publicKeyClient) == False:
                 print("Invalid signature, Closing the connection...")
                 conn.close()
             poContent = pickle.loads(message['po']['poContent'])
@@ -90,12 +88,11 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     'pubKC': pubKCneimported,
                     'amount': produse[poContent['orderDesc']]
                 })
-                signedMessage = crypto.Sign().sign(merchantMessage, filename)
+                signedMessage = crypto.Sign().sign(merchantMessage, rsaKeyFilename)
 
                 order = pickle.dumps({
                     'pm': message['encryptedPm'],
                     'encryptedPmKey': message['encryptedPGkey'],
-                    'mm': merchantMessage,
                     'signedMm': signedMessage
                 })
                 encryptedOrder = crypto.Aes().encrypt(order, AESkeyPG)
@@ -109,8 +106,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 # step 5
                 print('Step 5')
                 data = pickle.loads(spg.recv(10000))
-                print(data)
-                # trec peste verificare cheie
+                AESkeyPG = crypto.Rsa().decrypt(data['encryptedKey'], key)
                 encryptedTransactionInfo = {
                     'cipertext': data['encryptedTransactionInfo'][0],
                     'nonce': data['encryptedTransactionInfo'][1],
